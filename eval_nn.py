@@ -37,7 +37,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-p", "--model_path", type=str, required=True, help="Path to model checkpoint"
     )
-    parser.add_argument("-n", "--num_predictions", type=int, default=10000)
+    parser.add_argument("-n", "--num_predictions", type=int, default=1000000)
     args = parser.parse_args()
 
     # Load neural network
@@ -49,10 +49,13 @@ if __name__ == "__main__":
 
     # Get stats
     print(f"Error stats with {args.num_predictions} samples")
-    print("="*50)
+    print("=" * 50)
     print(f"MSE: {np.mean(err**2):.2e}")
     print(f"MAE: {np.mean(np.abs(err)):.2e}")
     percentiles = [0, 25, 50, 75, 90, 99, 99.5, 99.9, 99.99, 100]
-    print("Absolute Error Percentiles:")
+    print("Absolute Error Percentiles (model and zero predictor):")
     for p in percentiles:
-        print(f"\t{p:>6.2f}%: {np.percentile(np.abs(err), p):.2e}")
+        print(
+            f"\t{p:>6.2f}%:\t{np.percentile(np.abs(err), p):.2e}"
+            f"\t{np.percentile(np.abs(y), p):.2e}"
+        )

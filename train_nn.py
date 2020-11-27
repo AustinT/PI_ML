@@ -16,8 +16,8 @@ class RhoMLP(pl.LightningModule):
         hidden_sizes,
         linden_path,
         n_in=4,
-        batch_size=32,
-        n_train=32000,
+        batch_size=128,
+        n_train=320000,
         lr=1e-3,
         output_power: int = 1,
     ):
@@ -56,7 +56,9 @@ class RhoMLP(pl.LightningModule):
 
     def configure_optimizers(self):
         adam = torch.optim.Adam(self.parameters(), lr=self.lr)
-        sched = torch.optim.lr_scheduler.ReduceLROnPlateau(adam, factor=0.3)
+        sched = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            adam, factor=0.3, patience=4, min_lr=1e-5
+        )
         return dict(optimizer=adam, lr_scheduler=sched, monitor="loss/val")
 
     def _get_xy_data(self):
@@ -82,7 +84,7 @@ class RhoMLP(pl.LightningModule):
         rand_nums = torch.as_tensor(rand_nums, dtype=torch.float)
         rho_vals = torch.as_tensor(rho_vals.reshape(-1, 1), dtype=torch.float)
         dset = TensorDataset(rand_nums, rho_vals)
-        return DataLoader(dset, batch_size=self.batch_size, drop_last=True)
+        return DataLoader(dset, batch_size=self.batch_size, drop_last=True, num_workers=3)
 
     def train_dataloader(self):
         self._apply_power = False
@@ -114,6 +116,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--hidden", type=int, nargs="+", default=[128, 64, 32])
     parser.add_argument("-p", "--output_power", type=int, default=1)
+    parser.add_argument("-l", "--learning_rate", type=float, default=1e-3)
+    parser.add_argument("-b", "--batch_size", type=int, default=128)
+    parser.add_argument("-e", "--num_epochs", type=int, default=50)
+    parser.add_argument("-n", "--n_train", type=int, default=320000)
+    parser.add_argument("--gpu", action="store_true")
     args = parser.parse_args()
 
     # Sample neural network
@@ -121,16 +128,19 @@ if __name__ == "__main__":
     model = RhoMLP(
         hidden_sizes=args.hidden + [1],
         linden_path="linden.out",
-        lr=1e-3,
+        lr=args.learning_rate,
         output_power=args.output_power,
+        batch_size=args.batch_size,
+        n_train=args.n_train,
     )
 
     # Create trainer object
     trainer = pl.Trainer(
         default_root_dir=str("logs/sample_model"),
-        max_epochs=200,
+        max_epochs=args.num_epochs,
         reload_dataloaders_every_epoch=True,
         callbacks=[pl.callbacks.LearningRateMonitor()],
+        gpus=1 if args.gpu else 0,
     )
 
     # Run the fitting
