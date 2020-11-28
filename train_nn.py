@@ -20,6 +20,8 @@ class RhoMLP(pl.LightningModule):
         n_train=320000,
         lr=1e-3,
         output_power: int = 1,
+        lr_factor: float = 0.3,
+        lr_patience: int = 4,
     ):
         super().__init__()
 
@@ -43,6 +45,8 @@ class RhoMLP(pl.LightningModule):
         self.n_train = n_train
         self.loss_func = torch.nn.MSELoss()
         self.lr = lr
+        self.lr_factor = lr_factor
+        self.lr_patience = lr_patience
 
         # Data stuff
         self.linden_path = linden_path
@@ -57,7 +61,7 @@ class RhoMLP(pl.LightningModule):
     def configure_optimizers(self):
         adam = torch.optim.Adam(self.parameters(), lr=self.lr)
         sched = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            adam, factor=0.3, patience=4, min_lr=1e-5
+            adam, factor=self.lr_factor, patience=self.lr_patience, min_lr=1e-5
         )
         return dict(optimizer=adam, lr_scheduler=sched, monitor="loss/val")
 
@@ -84,7 +88,9 @@ class RhoMLP(pl.LightningModule):
         rand_nums = torch.as_tensor(rand_nums, dtype=torch.float)
         rho_vals = torch.as_tensor(rho_vals.reshape(-1, 1), dtype=torch.float)
         dset = TensorDataset(rand_nums, rho_vals)
-        return DataLoader(dset, batch_size=self.batch_size, drop_last=True, num_workers=3)
+        return DataLoader(
+            dset, batch_size=self.batch_size, drop_last=True, num_workers=3
+        )
 
     def train_dataloader(self):
         self._apply_power = False
@@ -114,11 +120,11 @@ if __name__ == "__main__":
 
     # Argument parser
     parser = argparse.ArgumentParser()
-    parser.add_argument("--hidden", type=int, nargs="+", default=[128, 64, 32])
+    parser.add_argument("--hidden", type=int, nargs="+", default=[512, 256, 64, 64])
     parser.add_argument("-p", "--output_power", type=int, default=1)
     parser.add_argument("-l", "--learning_rate", type=float, default=1e-3)
     parser.add_argument("-b", "--batch_size", type=int, default=128)
-    parser.add_argument("-e", "--num_epochs", type=int, default=50)
+    parser.add_argument("-e", "--num_epochs", type=int, default=100)
     parser.add_argument("-n", "--n_train", type=int, default=320000)
     parser.add_argument("--gpu", action="store_true")
     args = parser.parse_args()
