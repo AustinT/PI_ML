@@ -1,7 +1,6 @@
 """ File to train neural network on path integral data """
 
 import argparse
-import numpy as np
 import torch
 from torch.utils.data import TensorDataset, DataLoader
 import pytorch_lightning as pl
@@ -19,7 +18,6 @@ class RhoMLP(pl.LightningModule):
         batch_size=128,
         n_train=320000,
         lr=1e-3,
-        output_power: int = 1,
         lr_factor: float = 0.3,
         lr_patience: int = 4,
     ):
@@ -36,9 +34,6 @@ class RhoMLP(pl.LightningModule):
             last = h
         layers = layers[:-1]  # pop off last activation
         self.net = torch.nn.Sequential(*layers)
-        self.output_power = output_power
-        assert self.output_power >= 1  # less than 1 not supported
-        self._apply_power = True
 
         # Training stuff
         self.batch_size = batch_size
@@ -53,10 +48,7 @@ class RhoMLP(pl.LightningModule):
 
     def forward(self, x):
         y = self.net(x)
-        if self.output_power > 1 and self._apply_power:
-            return torch.pow(y, self.output_power)
-        else:
-            return y
+        return torch.exp(y)
 
     def configure_optimizers(self):
         adam = torch.optim.Adam(self.parameters(), lr=self.lr)
@@ -78,12 +70,6 @@ class RhoMLP(pl.LightningModule):
 
         rand_nums, rho_vals = self._get_xy_data()
 
-        # Apply power of NN
-        if self.output_power > 1 and not self._apply_power:
-            rho_vals = np.sign(rho_vals) * np.power(
-                np.abs(rho_vals), 1 / self.output_power
-            )
-
         # Convert to tensor dataset for serving
         rand_nums = torch.as_tensor(rand_nums, dtype=torch.float)
         rho_vals = torch.as_tensor(rho_vals.reshape(-1, 1), dtype=torch.float)
@@ -93,11 +79,9 @@ class RhoMLP(pl.LightningModule):
         )
 
     def train_dataloader(self):
-        self._apply_power = False
         return self._get_dataloader()
 
     def val_dataloader(self):
-        self._apply_power = True
         return self._get_dataloader()
 
     def _get_loss(self, batch):
@@ -106,11 +90,9 @@ class RhoMLP(pl.LightningModule):
         return self.loss_func(y_pred, y)
 
     def training_step(self, batch, batch_idx):
-        self._apply_power = False
         return self._get_loss(batch)
 
     def validation_step(self, batch, batch_idx):
-        self._apply_power = True
         loss = self._get_loss(batch)
         self.log("loss/val", loss, prog_bar=True)
         return loss
@@ -120,8 +102,7 @@ if __name__ == "__main__":
 
     # Argument parser
     parser = argparse.ArgumentParser()
-    parser.add_argument("--hidden", type=int, nargs="+", default=[512, 256, 64, 64])
-    parser.add_argument("-p", "--output_power", type=int, default=1)
+    parser.add_argument("--hidden", type=int, nargs="+", default=[256, 256, 128, 128, 64, 64])
     parser.add_argument("-l", "--learning_rate", type=float, default=1e-3)
     parser.add_argument("-b", "--batch_size", type=int, default=128)
     parser.add_argument("-e", "--num_epochs", type=int, default=100)
@@ -135,7 +116,6 @@ if __name__ == "__main__":
         hidden_sizes=args.hidden + [1],
         linden_path="linden.out",
         lr=args.learning_rate,
-        output_power=args.output_power,
         batch_size=args.batch_size,
         n_train=args.n_train,
     )
